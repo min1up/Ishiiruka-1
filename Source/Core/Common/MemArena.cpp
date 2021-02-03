@@ -173,36 +173,21 @@ u8* MemArena::FindMemoryBase()
 	// to run _only_ on Apple-Silicon-based Macs that are running the process under
 	// a translated environment. Intel-based Macs will still get the "regular" path
 	// and should have no changes.
-#if defined(__APPLE__)
-	if (processIsRunningUnderRosetta2())
-	{
-		const size_t memory_size = 0x400000000;
-		const int flags = MAP_ANON | MAP_PRIVATE;
-
-		void* base = mmap(nullptr, memory_size, PROT_NONE, flags, -1, 0);
-		if (base == MAP_FAILED)
-		{
-			PanicAlert("Failed to map enough memory space: %s", strerror(errno));
-			return nullptr;
-		}
-
-		munmap(base, memory_size);
-		return static_cast<u8*>(base);
-	}
+#if _ARCH_32
+	const size_t memory_size = 0x31000000;
+#else
+	const size_t memory_size = 0x40000000;
 #endif
-
-#if _ARCH_64
+	
 #ifdef _WIN32
-	// 64 bit
-	u8* base = (u8*)VirtualAlloc(0, 0x400000000, MEM_RESERVE, PAGE_READWRITE);
+	u8* base = (u8*)VirtualAlloc(nullptr, memory_size, MEM_RESERVE, PAGE_READWRITE);
+	if (!base)
+	{
+		PanicAlert("Failed to map enough memory space: %s", strerror(errno));
+		return nullptr;
+	}
 	VirtualFree(base, 0, MEM_RELEASE);
 	return base;
-#else
-	// Very precarious - mmap cannot return an error when trying to map already used pages.
-	// This makes the Windows approach above unusable on Linux, so we will simply pray...
-	return reinterpret_cast<u8*>(0x2300000000ULL);
-#endif
-
 #else // 32 bit
 #ifdef ANDROID
 	// Android 4.3 changed how mmap works.
@@ -212,14 +197,13 @@ u8* MemArena::FindMemoryBase()
 #else
 	const int flags = MAP_ANON | MAP_PRIVATE;
 #endif
-	const u32 MemSize = 0x31000000;
 	void* base = mmap(0, MemSize, PROT_NONE, flags, -1, 0);
 	if (base == MAP_FAILED)
 	{
 		PanicAlert("Failed to map 1 GB of memory space: %s", strerror(errno));
 		return 0;
 	}
-	munmap(base, MemSize);
+	munmap(base, memory_size);
 	return static_cast<u8*>(base);
 #endif
 }
